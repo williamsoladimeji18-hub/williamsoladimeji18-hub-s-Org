@@ -1,0 +1,9 @@
+{
+  "name": "Teola - Your AI Fashion Stylist",
+  "description": "Teola is an avant-garde AI-powered fashion assistant that helps you curate outfits, manage your virtual wardrobe, and visualize style combinations with a refined aesthetic.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
