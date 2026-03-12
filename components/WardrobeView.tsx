@@ -28,6 +28,7 @@ interface WardrobeViewProps {
   onSendMessage?: (text: string) => void;
   onStartLive?: () => void;
   onMenuToggle?: () => void;
+  onNavigateToChat?: () => void;
   savedOutfits?: Outfit[];
   onSaveOutfit?: (outfit: Outfit) => void;
 }
@@ -50,7 +51,7 @@ const IMAGINE_RECOMMENDATIONS = {
 
 const WardrobeView: React.FC<WardrobeViewProps> = ({ 
   items = [], subscriptionTier, onAdd, onUpdate, onBulkUpdate, onBulkRemove, onRemove, 
-  onToggleStar, onStyleItems, onQuickUpload, onBulkTextImport, onUpgrade, userProfile, onSendMessage, onStartLive, onMenuToggle,
+  onToggleStar, onStyleItems, onQuickUpload, onBulkTextImport, onUpgrade, userProfile, onSendMessage, onStartLive, onMenuToggle, onNavigateToChat,
   savedOutfits = [], onSaveOutfit
 }) => {
   const [filterType, setFilterType] = useState('All');
@@ -179,7 +180,8 @@ const WardrobeView: React.FC<WardrobeViewProps> = ({
 
       <header className="px-6 py-5 border-b border-neutral-100 dark:border-white/5 flex items-center justify-between shrink-0 bg-white dark:bg-neutral-950 z-40">
         <div className="flex items-center gap-4">
-           <button onClick={onMenuToggle} className="p-2 hover:bg-neutral-100 dark:hover:bg-white/10 rounded-xl dark:text-white"><Menu size={20} /></button>
+
+           <button onClick={onNavigateToChat} className="p-2 hover:bg-neutral-100 dark:hover:bg-white/10 rounded-xl text-neutral-400 hover:text-black dark:hover:text-white transition-all" title="Stylist"><MessageSquare size={20} /></button>
            <h2 className="serif text-xl font-bold dark:text-white">MAISON CLOSET</h2>
         </div>
         <button onClick={onUpgrade} className="px-4 py-2 bg-blue-600 text-white rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg">Upgrade Elite</button>

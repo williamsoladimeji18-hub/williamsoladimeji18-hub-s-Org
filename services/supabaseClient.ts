@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL;
-const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL?.trim();
+const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY?.trim();
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn(
@@ -21,7 +21,8 @@ export const supabase = createClient(
  */
 export const maisonLink = {
   exportState: async (userId: string): Promise<string> => {
-    const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    const { data } = await supabase.from('profiles').select('*').eq('id', userId);
+    const profile = data && data.length > 0 ? data[0] : null;
     const { data: wardrobe } = await supabase.from('wardrobe_items').select('*').eq('user_id', userId);
     const { data: outfits } = await supabase.from('saved_outfits').select('*').eq('user_id', userId);
     

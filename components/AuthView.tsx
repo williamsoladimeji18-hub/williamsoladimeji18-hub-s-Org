@@ -6,11 +6,71 @@ import { supabase } from '../services/supabaseClient';
 
 interface AuthViewProps {
   onNavigate: (view: 'terms' | 'privacy') => void;
+  onDemoMode: () => void;
+  onRetry?: () => void;
 }
 
-const AuthView: React.FC<AuthViewProps> = ({ onNavigate }) => {
+const AuthView: React.FC<AuthViewProps> = ({ onNavigate, onDemoMode, onRetry }) => {
   const [isConnecting, setIsConnecting] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<string>('');
+  const [loadingTimeout, setLoadingTimeout] = useState<boolean>(false);
+  const [hasActiveSession, setHasActiveSession] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setHasActiveSession(!!session);
+    });
+  }, []);
+
+  const handleRetry = () => {
+    setIsConnecting('profile');
+    setConnectionStatus('Retrying profile connection...');
+    onRetry?.();
+  };
+  const [diagnosticInfo, setDiagnosticInfo] = useState<string | null>(null);
+
+  const runDiagnostic = async () => {
+    const url = (import.meta as any).env.VITE_SUPABASE_URL;
+    if (!url) {
+      setDiagnosticInfo("Error: VITE_SUPABASE_URL is missing.");
+      return;
+    }
+
+    try {
+      const start = Date.now();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const response = await fetch(`${url}/rest/v1/`, {
+        method: 'GET',
+        headers: { 'apikey': (import.meta as any).env.VITE_SUPABASE_ANON_KEY },
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      const duration = Date.now() - start;
+      
+      if (response.ok || response.status === 401) {
+        setDiagnosticInfo(`Success: Supabase reached in ${duration}ms. (Status: ${response.status})`);
+      } else {
+        setDiagnosticInfo(`Error: Received status ${response.status} from Supabase.`);
+      }
+    } catch (e: any) {
+      setDiagnosticInfo(`Error: Could not reach Supabase. ${e.message}`);
+    }
+  };
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isConnecting) {
+      setLoadingTimeout(false);
+      setDiagnosticInfo(null);
+      timer = setTimeout(() => {
+        setLoadingTimeout(true);
+      }, 15000); // 15 seconds timeout
+    }
+    return () => clearTimeout(timer);
+  }, [isConnecting]);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [authError, setAuthError] = useState<{ provider: string; message: string } | null>(null);
   const [consentProvider, setConsentProvider] = useState<string | null>(null);
@@ -59,7 +119,11 @@ const AuthView: React.FC<AuthViewProps> = ({ onNavigate }) => {
 
     if (error) {
       setIsConnecting(null);
-      setAuthError({ provider, message: error.message });
+      let message = error.message;
+      if (message.includes('provider is not enabled')) {
+        message = `The ${provider} login provider is not enabled in your Supabase project. Please go to your Supabase Dashboard > Authentication > Providers and enable ${provider}.`;
+      }
+      setAuthError({ provider, message });
     }
   };
 
@@ -96,7 +160,11 @@ const AuthView: React.FC<AuthViewProps> = ({ onNavigate }) => {
 
     if (result.error) {
       setIsConnecting(null);
-      setError(result.error.message);
+      let message = result.error.message;
+      if (message.includes('provider is not enabled')) {
+        message = "Email login is not enabled in your Supabase project. Please go to your Supabase Dashboard > Authentication > Providers and enable 'Email'.";
+      }
+      setError(message);
     } else {
       setSuccessMsg(authMode === 'signup' ? 'Account created! Please check your email for verification.' : 'Success! You are now logged in.');
       // The onAuthStateChange in App.tsx will handle the rest
@@ -172,14 +240,23 @@ const AuthView: React.FC<AuthViewProps> = ({ onNavigate }) => {
 
         <div className="w-full space-y-6">
           {isMissingConfig && (
-            <div className="w-full bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 p-4 rounded-2xl flex items-start gap-3 animate-in fade-in slide-in-from-top-2 duration-500">
-              <AlertTriangle className="text-amber-500 shrink-0" size={18} />
-              <div className="space-y-1">
-                <p className="text-[10px] font-bold text-amber-900 dark:text-amber-200 uppercase tracking-wider">Configuration Required</p>
-                <p className="text-[10px] text-amber-800/80 dark:text-amber-300/80 leading-relaxed">
-                  Supabase keys are missing. Please set <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">VITE_SUPABASE_URL</code> and <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">VITE_SUPABASE_ANON_KEY</code> in the Settings menu to enable authentication and data storage.
-                </p>
+            <div className="w-full space-y-4 animate-in fade-in slide-in-from-top-2 duration-500">
+              <div className="w-full bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 p-4 rounded-2xl flex items-start gap-3">
+                <AlertTriangle className="text-amber-500 shrink-0" size={18} />
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold text-amber-900 dark:text-amber-200 uppercase tracking-wider">Configuration Required</p>
+                  <p className="text-[10px] text-amber-800/80 dark:text-amber-300/80 leading-relaxed">
+                    Supabase keys are missing. Please set <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">VITE_SUPABASE_URL</code> and <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">VITE_SUPABASE_ANON_KEY</code> in the Settings menu.
+                  </p>
+                </div>
               </div>
+              
+              <button 
+                onClick={onDemoMode}
+                className="w-full py-4 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-all active:scale-95 flex items-center justify-center gap-3"
+              >
+                <Zap size={14} className="text-amber-500" /> Continue in Demo Mode
+              </button>
             </div>
           )}
 
@@ -210,16 +287,45 @@ const AuthView: React.FC<AuthViewProps> = ({ onNavigate }) => {
                   </div>
                </div>
                <div className="text-center space-y-2">
-                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-500 animate-pulse">{connectionStatus}</p>
-                  <p className="text-[8px] font-bold uppercase tracking-widest text-neutral-400">Secure Protocol Active</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-500 animate-pulse">
+                    {loadingTimeout ? 'Connection taking longer than usual...' : connectionStatus}
+                  </p>
+                  <p className="text-[8px] font-bold uppercase tracking-widest text-neutral-400">
+                    {loadingTimeout ? 'Check your internet or Supabase status' : 'Secure Protocol Active'}
+                  </p>
+                  {diagnosticInfo && (
+                    <p className={`text-[8px] font-medium px-4 py-1 rounded-full ${diagnosticInfo.startsWith('Success') ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                      {diagnosticInfo}
+                    </p>
+                  )}
                </div>
                
-               <button 
-                onClick={handleCancelConnection}
-                className="flex items-center gap-2 px-6 py-2 bg-neutral-50 dark:bg-neutral-800 rounded-full text-neutral-400 hover:text-red-500 transition-all active:scale-95 text-[9px] font-black uppercase tracking-widest"
-               >
-                  <XCircle size={14} /> Cancel
-               </button>
+               <div className="flex flex-col gap-3 w-full">
+                 {loadingTimeout && !diagnosticInfo && (
+                   <button 
+                    onClick={runDiagnostic}
+                    className="flex items-center justify-center gap-2 px-6 py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 transition-all active:scale-95 text-[9px] font-black uppercase tracking-widest"
+                   >
+                      <RefreshCw size={14} /> Run Connection Diagnostic
+                   </button>
+                 )}
+
+                 <button 
+                  onClick={handleCancelConnection}
+                  className="flex items-center justify-center gap-2 px-6 py-4 bg-neutral-50 dark:bg-neutral-800 rounded-2xl text-neutral-400 hover:text-red-500 transition-all active:scale-95 text-[9px] font-black uppercase tracking-widest"
+                 >
+                    <XCircle size={14} /> {loadingTimeout ? 'Reset Connection' : 'Cancel'}
+                 </button>
+                 
+                 {loadingTimeout && (
+                   <button 
+                    onClick={onDemoMode}
+                    className="flex items-center justify-center gap-2 px-6 py-4 bg-blue-600 text-white rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-lg"
+                   >
+                      <Zap size={14} /> Use Demo Mode Instead
+                   </button>
+                 )}
+               </div>
             </div>
           ) : consentProvider ? (
             <div className="w-full bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 p-8 rounded-[2.5rem] animate-in zoom-in-95 duration-500 space-y-8 shadow-xl">
@@ -284,7 +390,25 @@ const AuthView: React.FC<AuthViewProps> = ({ onNavigate }) => {
                </div>
             </div>
           ) : !showManual ? (
-            <div className="space-y-4">
+            <div className="space-y-6">
+              {hasActiveSession && !isConnecting && (
+                <div className="w-full bg-blue-500/10 border border-blue-500/20 p-6 rounded-[2rem] space-y-4 animate-in slide-in-from-top-4 duration-500">
+                  <div className="flex items-center gap-3 text-blue-500">
+                    <Info size={18} />
+                    <p className="text-[10px] font-black uppercase tracking-widest">Session Active</p>
+                  </div>
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed italic">
+                    You are authenticated, but we couldn't load your profile. This usually happens if the database is waking up.
+                  </p>
+                  <button 
+                    onClick={handleRetry}
+                    className="w-full py-4 bg-blue-600 text-white rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+                  >
+                    <RefreshCw size={14} /> Retry Profile Connection
+                  </button>
+                </div>
+              )}
+
               <div className="grid gap-3">
                 {providers.map((provider) => (
                   <button

@@ -373,9 +373,7 @@ const SettingsView: React.FC<SettingsViewProps> = (props) => {
     <div className="h-full overflow-y-auto no-scrollbar bg-[#0A0A0A] transition-colors duration-500">
       <div className="pt-6 md:pt-12">
         <div className="flex items-center justify-between px-6 mb-8 md:hidden">
-          <button onClick={onMenuToggle} className="p-2 -ml-2 text-white/40 hover:text-white transition-colors">
-            <Menu size={20} />
-          </button>
+
           <h1 className="text-lg font-medium text-white">Settings</h1>
           <div className="w-10" />
         </div>

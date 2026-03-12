@@ -30,6 +30,7 @@ interface ChatViewProps {
   onUpgrade?: () => void;
   onStartLive?: () => void;
   onMenuToggle?: () => void;
+  onNavigateToWardrobe?: () => void;
   a11yMode?: boolean;
   isTemporaryChat?: boolean;
   onToggleTemporary?: () => void;
@@ -38,7 +39,7 @@ interface ChatViewProps {
 const ChatView: React.FC<ChatViewProps> = ({ 
   messages, onSendMessage, onRefineOutfit, isTyping, wardrobe, 
   onSaveOutfit, savedOutfits, onAddSuggestedItem, onSendToPlanner, 
-  onQuickUpload, onOutfitFeedback, userProfile, onUpdateUserProfile, onUpgrade, onStartLive, onMenuToggle, a11yMode,
+  onQuickUpload, onOutfitFeedback, userProfile, onUpdateUserProfile, onUpgrade, onStartLive, onMenuToggle, onNavigateToWardrobe, a11yMode,
   isTemporaryChat, onToggleTemporary
 }) => {
   const [input, setInput] = useState('');
@@ -76,11 +77,13 @@ const ChatView: React.FC<ChatViewProps> = ({
       {/* Redesigned Header per PDF instructions */}
       <header className="px-4 py-3 md:px-8 md:py-5 flex items-center justify-between bg-white/80 dark:bg-[#050505]/80 backdrop-blur-2xl z-40 border-b border-neutral-100 dark:border-white/5 shadow-sm shrink-0">
          <div className="flex items-center gap-3">
+
             <button 
-              onClick={onMenuToggle}
-              className="p-2 hover:bg-neutral-100 dark:hover:bg-white/10 rounded-xl transition-all dark:text-white"
+              onClick={onNavigateToWardrobe}
+              className="p-2 hover:bg-neutral-100 dark:hover:bg-white/10 rounded-xl transition-all text-neutral-400 hover:text-black dark:hover:text-white"
+              title="Closet"
             >
-              <Menu size={20} />
+              <Shirt size={20} />
             </button>
             <button 
               onClick={onUpgrade}

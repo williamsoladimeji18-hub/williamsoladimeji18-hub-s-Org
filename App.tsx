@@ -56,6 +56,7 @@ const App: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [isDemoMode, setIsDemoMode] = useState(false);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -64,35 +65,112 @@ const App: React.FC = () => {
   }, [theme, a11yMode]);
 
   useEffect(() => {
+    if (isDemoMode) {
+      const demoUser: UserProfile = {
+        id: 'demo-user',
+        name: 'Demo Stylist',
+        username: 'demo',
+        email: 'demo@maison.teola',
+        subscription_tier: 'Pro',
+        style_preferences: ['Minimalist', 'Strategic'],
+        gender: 'Neutral',
+      };
+      setUser(demoUser);
+      loadWardrobe();
+      loadOutfits();
+      loadChats('demo-user');
+      return;
+    }
+  }, [isDemoMode]);
+
+  const [isRetryingProfile, setIsRetryingProfile] = useState(false);
+
+  const fetchProfile = async (session: any) => {
+    if (!session?.user) return;
+    
+    // Use a regular query to avoid PGRST116 error entirely
+    const profilePromise = supabase.from('profiles').select('*').eq('id', session.user.id);
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Profile fetch timeout')), 20000)
+    );
+    
+    try {
+      const result = await Promise.race([profilePromise, timeoutPromise]) as any;
+      
+      if (result && 'error' in result && result.error) {
+        throw result.error;
+      }
+
+      const profile = result?.data && result.data.length > 0 ? result.data[0] : null;
+
+      if (profile) {
+        const tierProfile = { ...profile, subscriptionTier: profile.subscriptionTier || 'Free' };
+        setUser(tierProfile);
+        analytics.setUser(profile.id, tierProfile.subscriptionTier !== 'Free');
+        setCurrentView(prev => (prev === 'auth' || prev === 'onboarding') ? 'chat' : prev);
+        loadWardrobe();
+        loadOutfits();
+        loadChats(session.user.id);
+        loadRotations();
+      } else {
+        console.log("No profile found, redirecting to onboarding");
+        setCurrentView('onboarding');
+      }
+    } catch (err: any) {
+      console.error("Auth error details:", err);
+      const isTimeout = err.message === 'Profile fetch timeout';
+      addToast(
+        isTimeout 
+          ? "Connection timed out. Please check if your Supabase project is active/resumed." 
+          : `Database error: ${err.message || 'Unknown error'}`, 
+        "error"
+      );
+      setCurrentView('auth');
+    } finally {
+      setIsRetryingProfile(false);
+    }
+  };
+
+  useEffect(() => {
+    const initAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        fetchProfile(session);
+      } else {
+        setCurrentView('auth');
+      }
+    };
+
+    initAuth();
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, session: any) => {
       if (session?.user) {
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-        if (profile) {
-          const tierProfile = { ...profile, subscriptionTier: profile.subscriptionTier || 'Free' };
-          setUser(tierProfile);
-          analytics.setUser(profile.id, tierProfile.subscriptionTier !== 'Free');
-          setCurrentView(prev => (prev === 'auth' || prev === 'onboarding') ? 'chat' : prev);
-          loadWardrobe();
-          loadOutfits();
-          loadChats(session.user.id);
-          loadRotations();
-        } else {
-          setCurrentView('onboarding');
-        }
+        fetchProfile(session);
       } else {
         setUser(null);
         setCurrentView('auth');
       }
     });
+
     return () => subscription.unsubscribe();
   }, []);
 
   const loadWardrobe = async () => {
+    if (isDemoMode) {
+      const stored = localStorage.getItem('teola_wardrobe');
+      if (stored) setWardrobe(JSON.parse(stored));
+      return;
+    }
     const { data } = await supabase.from('wardrobe_items').select('*').order('created_at', { ascending: false });
     if (data) setWardrobe(data);
   };
 
   const loadOutfits = async () => {
+    if (isDemoMode) {
+      const stored = localStorage.getItem('teola_outfits');
+      if (stored) setSavedOutfits(JSON.parse(stored));
+      return;
+    }
     const { data } = await supabase.from('saved_outfits').select('*').order('saved_at', { ascending: false });
     if (data) setSavedOutfits(data);
   };
@@ -103,6 +181,17 @@ const App: React.FC = () => {
   };
 
   const loadChats = async (userId?: string) => {
+    if (isDemoMode) {
+      const stored = localStorage.getItem('teola_chats');
+      if (stored) {
+        const data = JSON.parse(stored);
+        setChats(data);
+        if (data.length > 0) setActiveChatId(data[0].id);
+      } else {
+        createNewChat(userId);
+      }
+      return;
+    }
     const { data } = await supabase.from('chats').select('*').order('updated_at', { ascending: false });
     if (data && data.length > 0) {
       setChats(data);
@@ -114,16 +203,32 @@ const App: React.FC = () => {
 
   const createNewChat = async (userId?: string) => {
     const newChat = {
+      id: Math.random().toString(36).substr(2, 9),
       title: 'New Session',
       messages: [{ role: 'assistant', content: GREETINGS[Math.floor(Math.random() * GREETINGS.length)] }],
-      user_id: userId || user?.id
+      user_id: userId || user?.id,
+      updated_at: new Date().toISOString()
     };
     
-    const { data, error } = await supabase.from('chats').insert([newChat]).select().single();
+    if (isDemoMode) {
+      setChats(prev => {
+        const next = [newChat, ...prev];
+        localStorage.setItem('teola_chats', JSON.stringify(next));
+        return next;
+      });
+      setActiveChatId(newChat.id);
+      setIsSidebarOpen(false);
+      setCurrentView('chat');
+      setIsTemporaryChat(false);
+      return;
+    }
+
+    const { data, error } = await supabase.from('chats').insert([newChat]).select();
     
-    if (data) {
-      setChats(prev => [data, ...prev]);
-      setActiveChatId(data.id);
+    if (data && data.length > 0) {
+      const chatData = data[0];
+      setChats(prev => [chatData, ...prev]);
+      setActiveChatId(chatData.id);
       setIsSidebarOpen(false);
       setCurrentView('chat');
       setIsTemporaryChat(false);
@@ -191,9 +296,11 @@ const App: React.FC = () => {
       }
 
       setChats(prev => {
-        const next = prev.map(c => c.id === activeChatId ? { ...c, messages: finalMessages, title: newTitle } : c);
-        if (!isTemporaryChat) {
-            supabase.from('chats').update({ messages: finalMessages, title: newTitle, updated_at: new Date().toISOString() }).eq('id', activeChatId);
+        const next = prev.map(c => c.id === activeChatId ? { ...c, messages: finalMessages, title: newTitle, updated_at: new Date().toISOString() } : c);
+        if (isDemoMode) {
+          localStorage.setItem('teola_chats', JSON.stringify(next));
+        } else if (!isTemporaryChat) {
+          supabase.from('chats').update({ messages: finalMessages, title: newTitle, updated_at: new Date().toISOString() }).eq('id', activeChatId);
         }
         return next;
       });
@@ -207,7 +314,9 @@ const App: React.FC = () => {
             ...c, 
             messages: c.messages.map(m => m.content === assistantMsg.content ? { ...m, outfit: { ...outfitWithId, visualUrl: visualUrl || undefined } } : m)
           } : c);
-          if (!isTemporaryChat) {
+          if (isDemoMode) {
+            localStorage.setItem('teola_chats', JSON.stringify(next));
+          } else if (!isTemporaryChat) {
               const updatedMessages = next.find(c => c.id === activeChatId)?.messages;
               if (updatedMessages) {
                 supabase.from('chats').update({ messages: updatedMessages, updated_at: new Date().toISOString() }).eq('id', activeChatId);
@@ -241,14 +350,33 @@ const App: React.FC = () => {
   };
 
   const handleSaveItem = async (item: ClothingItem) => {
-    const { data } = await supabase.from('wardrobe_items').insert([item]).select().single();
-    if (data) { setWardrobe(prev => [data, ...prev]); setEditingItem(null); addToast("Archived to Maison closet.", "success"); }
+    if (isDemoMode) {
+      setWardrobe(prev => {
+        const next = [item, ...prev];
+        localStorage.setItem('teola_wardrobe', JSON.stringify(next));
+        return next;
+      });
+      setEditingItem(null);
+      addToast("Archived to Maison closet.", "success");
+      return;
+    }
+    const { data } = await supabase.from('wardrobe_items').insert([item]).select();
+    if (data && data.length > 0) { setWardrobe(prev => [data[0], ...prev]); setEditingItem(null); addToast("Archived to Maison closet.", "success"); }
   };
 
   const handleSaveOutfit = async (outfit: Outfit) => {
-    const { data } = await supabase.from('saved_outfits').insert([outfit]).select().single();
-    if (data) {
-      setSavedOutfits(prev => [data, ...prev]);
+    if (isDemoMode) {
+      setSavedOutfits(prev => {
+        const next = [outfit, ...prev];
+        localStorage.setItem('teola_outfits', JSON.stringify(next));
+        return next;
+      });
+      addToast("Outfit saved to your vault.", "success");
+      return;
+    }
+    const { data } = await supabase.from('saved_outfits').insert([outfit]).select();
+    if (data && data.length > 0) {
+      setSavedOutfits(prev => [data[0], ...prev]);
       addToast("Outfit saved to your vault.", "success");
     }
   };
@@ -275,9 +403,10 @@ const App: React.FC = () => {
   };
 
   const handleSaveRotation = async (rotation: RotationSession) => {
-    const { data, error } = await supabase.from('rotation_sessions').upsert([{ ...rotation, user_id: user?.id }]).select().single();
-    if (data) {
-      const next = [data, ...rotations.filter(r => r.id !== data.id)];
+    const { data, error } = await supabase.from('rotation_sessions').upsert([{ ...rotation, user_id: user?.id }]).select();
+    if (data && data.length > 0) {
+      const rotationData = data[0];
+      const next = [rotationData, ...rotations.filter(r => r.id !== rotationData.id)];
       setRotations(next);
       addToast("Rotation deployed successfully.", "success");
     }
@@ -285,22 +414,29 @@ const App: React.FC = () => {
 
   const renderView = () => {
     switch (currentView) {
-      case 'chat': return <ChatView a11yMode={a11yMode} messages={activeChat?.messages || []} onSendMessage={handleSendMessage} onRefineOutfit={() => {}} isTyping={isTyping} wardrobe={wardrobe} onSaveOutfit={handleSaveOutfit} savedOutfits={savedOutfits} onAddSuggestedItem={async () => ({} as any)} onSendToPlanner={(o) => { setCurrentView('planner'); }} onQuickUpload={handleQuickUpload} onOutfitFeedback={() => {}} userProfile={user} onUpdateUserProfile={handleUpdateUser} onUpgrade={handleUpgradeNavigation} onStartLive={() => setIsLiveActive(true)} onMenuToggle={() => setIsSidebarOpen(true)} isTemporaryChat={isTemporaryChat} onToggleTemporary={() => setIsTemporaryChat(!isTemporaryChat)} />;
-      case 'runway': return <TrendFeedView user={user} wardrobe={wardrobe} onSeedStyling={(t) => { handleSendMessage(`Style me based on '${t}' vibe using my archive.`); setCurrentView('chat'); }} onUpgrade={handleUpgradeNavigation} onMenuToggle={() => setIsSidebarOpen(true)} />;
-      case 'wardrobe': return <WardrobeView items={wardrobe} subscriptionTier={user?.subscriptionTier || 'Free'} onAdd={handleSaveItem} onUpdate={() => {}} onBulkUpdate={() => {}} onBulkRemove={() => {}} onRemove={() => {}} onToggleStar={() => {}} onStyleItems={() => {}} onQuickUpload={handleQuickUpload} onBulkTextImport={() => {}} onUpgrade={handleUpgradeNavigation} userProfile={user} onSendMessage={handleSendMessage} onStartLive={() => setIsLiveActive(true)} onMenuToggle={() => setIsSidebarOpen(true)} savedOutfits={savedOutfits} onSaveOutfit={handleSaveOutfit} />;
+      case 'chat': return <ChatView a11yMode={a11yMode} messages={activeChat?.messages || []} onSendMessage={handleSendMessage} onRefineOutfit={() => {}} isTyping={isTyping} wardrobe={wardrobe} onSaveOutfit={handleSaveOutfit} savedOutfits={savedOutfits} onAddSuggestedItem={async () => ({} as any)} onSendToPlanner={(o) => { setCurrentView('planner'); }} onQuickUpload={handleQuickUpload} onOutfitFeedback={() => {}} userProfile={user} onUpdateUserProfile={handleUpdateUser} onUpgrade={handleUpgradeNavigation} onStartLive={() => setIsLiveActive(true)} onMenuToggle={() => setIsSidebarOpen(true)} onNavigateToWardrobe={() => setCurrentView('wardrobe')} isTemporaryChat={isTemporaryChat} onToggleTemporary={() => setIsTemporaryChat(!isTemporaryChat)} />;
+      case 'runway': return <TrendFeedView user={user} wardrobe={wardrobe} onSeedStyling={(t) => { handleSendMessage(`Style me based on '${t}' vibe using my archive.`); setCurrentView('chat'); }} onUpgrade={handleUpgradeNavigation} onMenuToggle={() => setIsSidebarOpen(true)} onNavigateToWardrobe={() => setCurrentView('wardrobe')} />;
+      case 'wardrobe': return <WardrobeView items={wardrobe} subscriptionTier={user?.subscriptionTier || 'Free'} onAdd={handleSaveItem} onUpdate={() => {}} onBulkUpdate={() => {}} onBulkRemove={() => {}} onRemove={() => {}} onToggleStar={() => {}} onStyleItems={() => {}} onQuickUpload={handleQuickUpload} onBulkTextImport={() => {}} onUpgrade={handleUpgradeNavigation} userProfile={user} onSendMessage={handleSendMessage} onStartLive={() => setIsLiveActive(true)} onMenuToggle={() => setIsSidebarOpen(true)} onNavigateToChat={() => setCurrentView('chat')} savedOutfits={savedOutfits} onSaveOutfit={handleSaveOutfit} />;
       case 'outfits': return <SavedOutfitsView outfits={savedOutfits} wardrobe={wardrobe} onRemove={() => {}} onBack={() => setCurrentView('chat')} />;
       case 'analytics': return <AnalyticsView wardrobe={wardrobe} user={user} onUpgrade={handleUpgradeNavigation} onSeedStyling={(t) => { handleSendMessage(`Style me based on '${t}' vibe using my archive.`); setCurrentView('chat'); }} onMenuToggle={() => setIsSidebarOpen(true)} onBack={() => setCurrentView('chat')} />;
       case 'settings': return <SettingsView user={user} theme={theme} onThemeChange={setTheme} a11yMode={a11yMode} onA11yToggle={() => setA11yMode(!a11yMode)} onUpdateUser={handleUpdateUser} onLogout={() => supabase.auth.signOut()} onNavigate={(v) => { setPreviousView(null); setCurrentView(v); }} onOpenDna={() => { setPreviousView(null); setCurrentView('style-dna'); }} onOpenHelp={() => { setPreviousView(null); setCurrentView('help-centre'); }} onOpenMaisonLink={() => { setPreviousView(null); setCurrentView('maison-link'); }} wardrobeCount={wardrobe.length} outfitCount={savedOutfits.length} isSyncing={false} onTriggerSync={() => {}} initialSubView={settingsSubView as any} onReturn={handleReturnFromSettings} onMenuToggle={() => setIsSidebarOpen(true)} />;
       case 'style-dna': return <StyleDnaView user={user} wardrobe={wardrobe} onUpdateUser={handleUpdateUser} onBack={() => setCurrentView('settings')} />;
       case 'help-centre': return <HelpCentreView onBack={() => setCurrentView('settings')} />;
       case 'maison-link': return <MaisonLinkView userId={user?.id || ''} onBack={() => setCurrentView('settings')} onSuccess={() => { addToast("Data synchronized successfully.", "success"); setCurrentView('chat'); }} />;
-      case 'planner': return <WeeklyPlanView user={user} wardrobe={wardrobe} onSaveOutfit={handleSaveOutfit} onQuickUpload={handleQuickUpload} onUpdateUser={handleUpdateUser} onUpgrade={handleUpgradeNavigation} onMenuToggle={() => setIsSidebarOpen(true)} savedRotations={rotations} onSaveRotation={handleSaveRotation} onOpenRotation={(id) => { setActiveRotationId(id); setCurrentView('rotation-detail'); }} />;
+      case 'planner': return <WeeklyPlanView user={user} wardrobe={wardrobe} onSaveOutfit={handleSaveOutfit} onQuickUpload={handleQuickUpload} onUpdateUser={handleUpdateUser} onUpgrade={handleUpgradeNavigation} onMenuToggle={() => setIsSidebarOpen(true)} onNavigateToWardrobe={() => setCurrentView('wardrobe')} savedRotations={rotations} onSaveRotation={handleSaveRotation} onOpenRotation={(id) => { setActiveRotationId(id); setCurrentView('rotation-detail'); }} />;
       case 'rotation-detail': {
         const activeRotation = rotations.find(r => r.id === activeRotationId);
         return activeRotation ? <RotationDetailView rotation={activeRotation} wardrobe={wardrobe} onUpdateRotation={handleSaveRotation} onBack={() => setCurrentView('planner')} /> : null;
       }
       case 'onboarding': return <OnboardingView onComplete={async (u, g, n, l, s) => { 
         try {
+          if (isDemoMode) {
+            const profile: UserProfile = { ...user!, username: u, gender: g, nationality: n, location: l, state_or_city: s };
+            setUser(profile);
+            setCurrentView('chat');
+            addToast("Welcome to the Maison!", "success");
+            return;
+          }
           const { data: { user: authUser } } = await supabase.auth.getUser(); 
           if (!authUser) throw new Error("No authenticated user found");
 
@@ -327,7 +463,11 @@ const App: React.FC = () => {
           addToast(err.message || "Failed to create profile", "error");
         }
       }} />;
-      case 'auth': return <AuthView onNavigate={setCurrentView} />;
+      case 'auth': return <AuthView onNavigate={setCurrentView} onDemoMode={() => setIsDemoMode(true)} onRetry={() => {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (session) fetchProfile(session);
+        });
+      }} />;
       default: return null;
     }
   };
