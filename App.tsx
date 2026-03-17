@@ -79,6 +79,7 @@ const App: React.FC = () => {
       loadWardrobe();
       loadOutfits();
       loadChats('demo-user');
+      setCurrentView('chat'); // Ensure we navigate to the main app
       return;
     }
   }, [isDemoMode]);
@@ -98,6 +99,12 @@ const App: React.FC = () => {
       const result = await Promise.race([profilePromise, timeoutPromise]) as any;
       
       if (result && 'error' in result && result.error) {
+        // Handle missing table error specifically
+        if (result.error.code === '42P01') {
+          addToast("Database tables are missing. Please run the schema in Supabase SQL Editor.", "error");
+          setCurrentView('auth');
+          return;
+        }
         throw result.error;
       }
 
@@ -133,10 +140,15 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const initAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        fetchProfile(session);
-      } else {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          fetchProfile(session);
+        } else {
+          setCurrentView('auth');
+        }
+      } catch (err) {
+        console.error("Session check failed:", err);
         setCurrentView('auth');
       }
     };
@@ -382,6 +394,10 @@ const App: React.FC = () => {
   };
 
   const handleUpdateUser = async (updated: UserProfile) => {
+    if (isDemoMode) {
+      setUser(updated);
+      return;
+    }
     const { error } = await supabase.from('profiles').update(updated).eq('id', updated.id);
     if (!error) { setUser(updated); }
   };
@@ -428,10 +444,20 @@ const App: React.FC = () => {
         const activeRotation = rotations.find(r => r.id === activeRotationId);
         return activeRotation ? <RotationDetailView rotation={activeRotation} wardrobe={wardrobe} onUpdateRotation={handleSaveRotation} onBack={() => setCurrentView('planner')} /> : null;
       }
-      case 'onboarding': return <OnboardingView onComplete={async (u, g, n, l, s) => { 
+      case 'onboarding': return <OnboardingView onComplete={async (u, g, n, l, s, co, ms, ss) => { 
         try {
           if (isDemoMode) {
-            const profile: UserProfile = { ...user!, username: u, gender: g, nationality: n, location: l, state_or_city: s };
+            const profile: UserProfile = { 
+              ...user!, 
+              username: u, 
+              gender: g, 
+              nationality: n, 
+              location: l, 
+              state_or_city: s,
+              country_origin: co,
+              measurement_system: ms,
+              sizing_standard: ss
+            };
             setUser(profile);
             setCurrentView('chat');
             addToast("Welcome to the Maison!", "success");
@@ -448,6 +474,9 @@ const App: React.FC = () => {
             nationality: n, 
             location: l, 
             state_or_city: s, 
+            country_origin: co,
+            measurement_system: ms,
+            sizing_standard: ss,
             email: authUser.email || '', 
             style_preferences: ['Minimalist'], 
             subscription_tier: 'Free' 

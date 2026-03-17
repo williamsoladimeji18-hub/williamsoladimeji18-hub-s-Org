@@ -81,21 +81,74 @@ export class GeminiService {
     } catch (e) { return {}; }
   }
 
-  async analyzeBodyMetrics(base64: string): Promise<any> {
+  async analyzeSpecificBodyPart(base64: string, partName: string, userProfile?: UserProfile | null): Promise<any> {
     try {
       const client = this.createClient();
+      const regionalContext = userProfile?.country_origin ? `The user is in ${userProfile.country_origin}. ` : "";
+      const systemInstruction = `You are Teola's Biometric Specialist.
+      Analyze this image of a specific body part: ${partName}.
+      Extract the measurement in cm and return JSON.
+      
+      IMPORTANT: Always return measurements in centimeters (cm).
+      
+      REGIONAL AWARENESS:
+      ${regionalContext}
+      Consider regional sizing standards and common sizing expectations for this region.
+      
+      Schema:
+      {
+        "measurement": string, // e.g. "95cm"
+        "confidence": number, // 0-1
+        "notes": string
+      }`;
+
+      const response = await client.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: { 
+          parts: [
+            { inlineData: { mimeType: 'image/png', data: base64.split(',')[1] || base64 } }, 
+            { text: `Extract the ${partName} measurement.` }
+          ] 
+        },
+        config: { systemInstruction, responseMimeType: "application/json" }
+      });
+      return JSON.parse(response.text || "{}");
+    } catch (e) { return {}; }
+  }
+
+  async analyzeBodyMetrics(base64: string, userProfile?: UserProfile | null): Promise<any> {
+    try {
+      const client = this.createClient();
+      const regionalContext = userProfile?.country_origin ? `The user is in ${userProfile.country_origin}. ` : "";
       const systemInstruction = `You are Teola's Biometric Analyst.
       Analyze this full-body photo and estimate physical attributes for high-fashion modeling.
       Be accurate but respectful. 
       Return JSON only.
       
+      IMPORTANT: All linear measurements MUST be in centimeters (cm). Shoe size MUST be in EU standard.
+      
+      REGIONAL AWARENESS:
+      ${regionalContext}
+      Consider regional sizing standards (EU, US, UK) and common sizing expectations for this region.
+      Adjust proportion analysis and ideal clothing cuts based on regional tailoring standards and cultural fit preferences.
+      
       Fields:
       - height: estimated height in cm (string, e.g. "175cm")
       - shoe_size: estimated EU shoe size (string, e.g. "42")
+      - chest: estimated chest circumference in cm (string)
+      - waist: estimated waist circumference in cm (string)
+      - hips: estimated hips circumference in cm (string)
+      - arms: estimated arm length in cm (string)
+      - legs: estimated leg length in cm (string)
+      - neck: estimated neck circumference in cm (string)
+      - shoulders: estimated shoulder width in cm (string)
       - body_type: Rectangle | Hourglass | Pear | Inverted Triangle | Apple | Athletic
       - skin_tone: descriptive tone (e.g. Fair, Olive, Deep, etc.)
       - face_shape: Oval | Round | Square | Heart | Diamond
-      - summary: A short professional summary of the silhouette.`;
+      - summary: A short professional summary of the silhouette.
+      - ideal_clothing_cuts: string[] (suggested cuts based on proportions and regional standards)
+      - color_blocking_suggestions: string[] (suggested color-blocking for body type)
+      - regional_size_interpretation: { "EU": string, "US": string, "UK": string } (e.g. { "EU": "M/L", "US": "M", "UK": "M" })`;
 
       const response = await client.models.generateContent({
         model: 'gemini-3-flash-preview',
@@ -169,6 +222,20 @@ export class GeminiService {
     7. Notification confirmation: "I will remind you about this outfit."
 
     MANDATORY MODE PREFIX: Always start your message with: "${modePrefix}"
+    
+    USER PREFERENCES:
+    - Country: ${userProfile?.country_origin || 'Unknown'}
+    - Measurement System: ${userProfile?.measurement_system || 'Metric'}
+    - Sizing Standard: ${userProfile?.sizing_standard || 'EU'}
+    - Preference Override: ${userProfile?.user_preference_override ? 'YES' : 'NO'}
+    - Override Type: ${userProfile?.override_type || 'None'}
+    
+    IMPORTANT: If 'user_preference_override' is true, PRIORITIZE the user's explicit measurement_system and sizing_standard over their country's defaults.
+    When mentioning measurements or sizes in your text response, ALWAYS use the user's preferred system (${userProfile?.measurement_system}) and sizing standard (${userProfile?.sizing_standard}).
+    
+    REGIONAL CONTEXT:
+    - Regional Tailoring: Consider standards for ${userProfile?.country_origin || 'Global'}.
+    - Cultural Fit: Adjust recommendations for local style preferences and common sizing expectations.
     
     If the user's request is a normal question, respond conversationally while adhering to the mode prefix. 
     If you provide a structured outfit, also include a JSON block at the end of your response with the 'outfits' array.`;
@@ -268,21 +335,39 @@ export class GeminiService {
     const client = this.createClient();
     const systemInstruction = `You are Teola's Style Architect. Conduct a high-fidelity DNA calibration.
     Calibration Steps:
-    1. Body Geometry (Fit, proportions)
-    2. Personality Archetype (Vibe, aesthetic)
-    3. Occasion Mapping (Where do they go?)
-    4. Palette & Commandment (Colors, do's/don'ts)
+    1. Body Geometry (Fit, proportions, regional sizing standards)
+    2. Personality Archetype (Vibe, aesthetic, cultural fit)
+    3. Occasion Mapping (Where do they go in their region?)
+    4. Palette & Commandment (Colors, do's/don'ts, regional trends)
     5. Synthesis.
+    
+    REGIONAL AWARENESS:
+    - User Region: ${profile?.country_origin || 'Global'}
+    - Sizing Standard: ${profile?.sizing_standard || 'EU'}
+    
+    USER PREFERENCE OVERRIDES:
+    The user may request to override their regional defaults.
+    - "Use US sizing instead of my country" -> sizing_standard: "US", user_preference_override: true, override_type: "sizing"
+    - "Always show measurements in inches" -> measurement_system: "Imperial", user_preference_override: true, override_type: "units"
+    - "I prefer oversized UK fits" -> fit_preference: "oversized", sizing_standard: "UK", user_preference_override: true, override_type: "multiple"
+    - "I buy clothes in EU sizing" -> sizing_standard: "EU", user_preference_override: true, override_type: "sizing"
+    
+    If the user input contains such intent, include the corresponding fields in 'partialUpdates'.
+    DO NOT delete or overwrite 'country_origin'.
+    
+    Ensure fits, cuts, and silhouettes are optimized for the user's regional tailoring standards or their explicit overrides.
     
     Return JSON with:
     - acknowledgment: A supportive, professional response.
-    - partialUpdates: Object with user profile fields.
+    - partialUpdates: Object with user profile fields (including measurement_system, sizing_standard, fit_preference, user_preference_override, override_type if applicable).
     - isComplete: boolean.
     - finalSummary: {
         hybridAesthetic: string,
         hybridDescription: string,
         archetypes: string[],
         proportionRules: string[],
+        idealClothingCuts: string[],
+        colorBlockingSuggestions: string[],
         keyRules: { dos: string[], donts: string[] },
         occasionMapping: { work: number, social: number, formal: number }
       }`;

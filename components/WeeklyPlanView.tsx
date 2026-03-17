@@ -149,7 +149,7 @@ const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
       <div className="flex-1 h-full overflow-y-auto p-4 md:p-10 max-w-7xl mx-auto space-y-8 pb-32 no-scrollbar relative z-10">
         <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 animate-in fade-in duration-700">
           <div className="flex items-center gap-4">
-
+            <button onClick={onMenuToggle} className="lg:hidden p-2 hover:bg-neutral-100 dark:hover:bg-white/10 rounded-xl text-neutral-400 hover:text-black dark:hover:text-white transition-all" title="Menu"><Menu size={20} /></button>
             <button onClick={onNavigateToWardrobe} className="p-2 hover:bg-neutral-100 dark:hover:bg-white/10 rounded-xl text-neutral-400 hover:text-black dark:hover:text-white transition-all" title="Closet"><Shirt size={20} /></button>
             <div className="space-y-2">
               <h2 className="serif text-4xl md:text-7xl font-bold tracking-tighter dark:text-white text-neutral-900">Weekly Planner</h2>

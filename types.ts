@@ -150,6 +150,9 @@ export interface UserProfile {
   username: string; 
   gender: string; 
   nationality?: string; 
+  country_origin?: string;
+  measurement_system?: 'Metric' | 'Imperial';
+  sizing_standard?: 'US' | 'UK' | 'EU';
   email: string;
   subscription_tier: SubscriptionTier;
   is_email_verified?: boolean;
@@ -169,6 +172,17 @@ export interface UserProfile {
   hair_color?: string;
   preferred_colors?: string[];
   height?: string;
+  chest?: string;
+  waist?: string;
+  hips?: string;
+  arms?: string;
+  legs?: string;
+  neck?: string;
+  shoulders?: string;
+  biometric_images?: Record<string, string>;
+  calibration_score?: number;
+  ideal_clothing_cuts?: string[];
+  color_blocking_suggestions?: string[];
   size_preference?: string; 
   wardrobe_goal?: string; 
   location?: string; 
@@ -179,6 +193,8 @@ export interface UserProfile {
   is_elite?: boolean; 
   style_analytics?: StyleIndexBreakdown;
   last_synced_at?: string;
+  user_preference_override?: boolean;
+  override_type?: string;
   last_refined_at?: string; 
   has_seen_profile_onboarding?: boolean; 
   age?: number;

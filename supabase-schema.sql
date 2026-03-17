@@ -18,6 +18,14 @@ create table public.profiles (
   notify_email boolean default true,
   notify_alerts boolean default true,
   auto_sync_outfits boolean default true,
+  chest text,
+  waist text,
+  hips text,
+  arms text,
+  legs text,
+  neck text,
+  shoulders text,
+  biometric_images jsonb default '{}'::jsonb,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );

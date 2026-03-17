@@ -110,20 +110,63 @@ const AuthView: React.FC<AuthViewProps> = ({ onNavigate, onDemoMode, onRetry }) 
     setIsConnecting(provider);
     setConnectionStatus(`Connecting to ${provider}...`);
     
-    const { error } = await supabase.auth.signInWithOAuth({
+    const oauthPromise = supabase.auth.signInWithOAuth({
       provider: provider.toLowerCase() as any,
       options: {
         redirectTo: window.location.origin
       }
     });
 
-    if (error) {
-      setIsConnecting(null);
-      let message = error.message;
-      if (message.includes('provider is not enabled')) {
-        message = `The ${provider} login provider is not enabled in your Supabase project. Please go to your Supabase Dashboard > Authentication > Providers and enable ${provider}.`;
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('OAuth timeout')), 15000)
+    );
+
+    try {
+      const result = await Promise.race([oauthPromise, timeoutPromise]) as any;
+      
+      if (result.error) {
+        setIsConnecting(null);
+        let message = result.error.message;
+        if (message.includes('provider is not enabled')) {
+          message = `The ${provider} login provider is not enabled in your Supabase project. Please go to your Supabase Dashboard > Authentication > Providers and enable ${provider}.`;
+        }
+        setAuthError({ provider, message });
       }
+    } catch (err: any) {
+      setIsConnecting(null);
+      const message = err.message === 'OAuth timeout' 
+        ? "Connection timed out. Your Supabase project might be paused or unreachable."
+        : err.message || "OAuth connection failed.";
       setAuthError({ provider, message });
+    }
+  };
+
+  const [isSendingMagicLink, setIsSendingMagicLink] = useState(false);
+
+  const handleMagicLink = async () => {
+    if (!identifier || showManual !== 'email') {
+      setError('Please enter your email address first.');
+      return;
+    }
+    
+    setIsSendingMagicLink(true);
+    setError('');
+    
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: identifier,
+        options: {
+          emailRedirectTo: window.location.origin,
+        }
+      });
+      
+      if (error) throw error;
+      
+      setSuccessMsg('Magic link sent! Please check your email inbox to log in.');
+    } catch (err: any) {
+      setError(err.message || 'Failed to send magic link.');
+    } finally {
+      setIsSendingMagicLink(false);
     }
   };
 
@@ -145,29 +188,35 @@ const AuthView: React.FC<AuthViewProps> = ({ onNavigate, onDemoMode, onRetry }) 
     setIsConnecting(actionName);
     setConnectionStatus('Setting up your session...');
     
-    let result;
-    if (authMode === 'signup') {
-      result = await supabase.auth.signUp({
-        email: identifier,
-        password: password,
-      });
-    } else {
-      result = await supabase.auth.signInWithPassword({
-        email: identifier,
-        password: password,
-      });
-    }
+    const authPromise = authMode === 'signup' 
+      ? supabase.auth.signUp({ email: identifier, password: password })
+      : supabase.auth.signInWithPassword({ email: identifier, password: password });
 
-    if (result.error) {
-      setIsConnecting(null);
-      let message = result.error.message;
-      if (message.includes('provider is not enabled')) {
-        message = "Email login is not enabled in your Supabase project. Please go to your Supabase Dashboard > Authentication > Providers and enable 'Email'.";
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Auth timeout')), 15000)
+    );
+
+    try {
+      const result = await Promise.race([authPromise, timeoutPromise]) as any;
+
+      if (result.error) {
+        setIsConnecting(null);
+        let message = result.error.message;
+        if (message.includes('provider is not enabled')) {
+          message = "Email login is not enabled in your Supabase project. Please go to your Supabase Dashboard > Authentication > Providers and enable 'Email'.";
+        }
+        setError(message);
+      } else {
+        setSuccessMsg(authMode === 'signup' ? 'Account created! Please check your email for verification.' : 'Success! You are now logged in.');
+        // The onAuthStateChange in App.tsx will handle the rest
       }
-      setError(message);
-    } else {
-      setSuccessMsg(authMode === 'signup' ? 'Account created! Please check your email for verification.' : 'Success! You are now logged in.');
-      // The onAuthStateChange in App.tsx will handle the rest
+    } catch (err: any) {
+      setIsConnecting(null);
+      if (err.message === 'Auth timeout') {
+        setError("Connection timed out. This often happens if your Supabase project is paused. Please log in to your Supabase dashboard and ensure your project is active.");
+      } else {
+        setError(err.message || "An unexpected error occurred during authentication.");
+      }
     }
   };
 
@@ -250,13 +299,6 @@ const AuthView: React.FC<AuthViewProps> = ({ onNavigate, onDemoMode, onRetry }) 
                   </p>
                 </div>
               </div>
-              
-              <button 
-                onClick={onDemoMode}
-                className="w-full py-4 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-all active:scale-95 flex items-center justify-center gap-3"
-              >
-                <Zap size={14} className="text-amber-500" /> Continue in Demo Mode
-              </button>
             </div>
           )}
 
@@ -524,6 +566,19 @@ const AuthView: React.FC<AuthViewProps> = ({ onNavigate, onDemoMode, onRetry }) 
                     </div>
                     {error && <p className="text-[8px] font-bold uppercase tracking-widest text-red-500 ml-4 mt-1">{error}</p>}
                   </div>
+
+                  {showManual === 'email' && authMode === 'login' && (
+                    <div className="flex justify-center">
+                      <button 
+                        type="button"
+                        onClick={handleMagicLink}
+                        disabled={isSendingMagicLink || !identifier}
+                        className="text-[9px] font-black uppercase tracking-widest text-blue-500 hover:text-blue-600 transition-colors disabled:opacity-30"
+                      >
+                        {isSendingMagicLink ? 'Sending Link...' : 'Send Magic Link Instead'}
+                      </button>
+                    </div>
+                  )}
                </div>
 
                <button
@@ -562,9 +617,18 @@ const AuthView: React.FC<AuthViewProps> = ({ onNavigate, onDemoMode, onRetry }) 
             By continuing, you agree to our <button onClick={() => onNavigate('terms')} className="underline hover:text-black dark:hover:text-white transition-colors">Terms</button> and <button onClick={() => onNavigate('privacy')} className="underline hover:text-black dark:hover:text-white transition-colors">Privacy</button>.
           </p>
           
-          <div className="flex items-center justify-center gap-4 pt-2 border-t border-neutral-50 dark:border-neutral-900">
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-            <span className="text-[8px] font-black uppercase tracking-[0.3em] text-neutral-400">Maison Server Active</span>
+          <div className="flex flex-col gap-3 pt-2 border-t border-neutral-50 dark:border-neutral-900">
+            <button 
+              onClick={onDemoMode}
+              className="w-full py-4 bg-neutral-50 dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-all active:scale-95 flex items-center justify-center gap-3"
+            >
+              <Zap size={14} className="text-amber-500" /> Continue in Demo Mode
+            </button>
+            
+            <div className="flex items-center justify-center gap-4 pt-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              <span className="text-[8px] font-black uppercase tracking-[0.3em] text-neutral-400">Maison Server Active</span>
+            </div>
           </div>
         </div>
       </div>

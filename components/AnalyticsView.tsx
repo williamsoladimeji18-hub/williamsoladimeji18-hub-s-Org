@@ -117,7 +117,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ wardrobe, user, onUpgrade
       <div className="p-6 md:p-12 max-w-7xl mx-auto space-y-12 md:space-y-20 animate-in fade-in duration-700">
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="flex items-center gap-4">
-
+            <button onClick={onMenuToggle} className="lg:hidden p-2 hover:bg-neutral-100 dark:hover:bg-white/10 rounded-xl text-neutral-400 hover:text-black dark:hover:text-white transition-all" title="Menu"><Menu size={20} /></button>
             <div className="space-y-2">
               <button onClick={onBack} className="flex items-center gap-2 text-neutral-400 hover:text-black dark:hover:text-white transition-colors group mb-2">
                 <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />

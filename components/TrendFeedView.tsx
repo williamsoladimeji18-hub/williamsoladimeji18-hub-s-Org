@@ -41,7 +41,7 @@ const TrendFeedView: React.FC<TrendFeedViewProps> = ({ user, wardrobe, onSeedSty
       <div className="p-6 md:p-12 max-w-7xl mx-auto space-y-12 md:space-y-20 pb-40">
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 animate-in fade-in slide-in-from-top-4 duration-700">
           <div className="flex items-center gap-4">
-
+            <button onClick={onMenuToggle} className="lg:hidden p-2 hover:bg-neutral-100 dark:hover:bg-white/10 rounded-xl text-neutral-400 hover:text-black dark:hover:text-white transition-all" title="Menu"><Menu size={20} /></button>
             <button onClick={onNavigateToWardrobe} className="p-2 hover:bg-neutral-100 dark:hover:bg-white/10 rounded-xl text-neutral-400 hover:text-black dark:hover:text-white transition-all" title="Closet"><Shirt size={20} /></button>
             <div className="space-y-2 md:space-y-4">
               <div className="flex items-center gap-3 text-blue-500">

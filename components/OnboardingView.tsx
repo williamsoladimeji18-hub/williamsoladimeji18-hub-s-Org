@@ -3,7 +3,7 @@ import TeolaLogo from './TeolaLogo';
 import { ChevronRight, Check, Globe, MapPin, Navigation, ChevronDown, X, Search, Sparkles, Map } from 'lucide-react';
 
 interface OnboardingViewProps {
-  onComplete: (username: string, gender: string, nationality: string, location: string, stateOrCity: string) => void;
+  onComplete: (username: string, gender: string, nationality: string, location: string, stateOrCity: string, countryOrigin: string, measurementSystem: 'Metric' | 'Imperial', sizingStandard: 'US' | 'UK' | 'EU') => void;
 }
 
 // Exhaustive Global Country List
@@ -91,6 +91,8 @@ const OnboardingView: React.FC<OnboardingViewProps> = ({ onComplete }) => {
   const [stateOrCity, setStateOrCity] = useState('');
   
   const [step, setStep] = useState(1);
+  const [measurementSystem, setMeasurementSystem] = useState<'Metric' | 'Imperial'>('Metric');
+  const [sizingStandard, setSizingStandard] = useState<'US' | 'UK' | 'EU'>('EU');
   
   const [countrySearch, setCountrySearch] = useState('');
   const [nationalitySearch, setNationalitySearch] = useState('');
@@ -117,13 +119,34 @@ const OnboardingView: React.FC<OnboardingViewProps> = ({ onComplete }) => {
     return availableStates.filter(s => s.toLowerCase().includes(stateSearch.toLowerCase()));
   }, [availableStates, stateSearch]);
 
+  useEffect(() => {
+    if (location === "United States of America") {
+      setMeasurementSystem('Imperial');
+      setSizingStandard('US');
+    } else if (location === "United Kingdom") {
+      setMeasurementSystem('Imperial');
+      setSizingStandard('UK');
+    } else if (location === "Nigeria") {
+      setMeasurementSystem('Metric');
+      setSizingStandard('EU');
+    } else if (["France", "Germany", "Italy", "Spain", "Netherlands", "Belgium", "Switzerland", "Austria", "Sweden", "Norway", "Denmark", "Finland"].includes(location)) {
+      setMeasurementSystem('Metric');
+      setSizingStandard('EU');
+    } else {
+      setMeasurementSystem('Metric');
+      setSizingStandard('EU');
+    }
+  }, [location]);
+
   const handleNext = () => {
     if (step === 1 && username.trim().length >= 3) {
       setStep(2);
     } else if (step === 2 && gender) {
       setStep(3);
     } else if (step === 3 && nationality && location && stateOrCity) {
-      onComplete(username, gender, nationality, location, stateOrCity);
+      setStep(4);
+    } else if (step === 4) {
+      onComplete(username, gender, nationality, location, stateOrCity, location, measurementSystem, sizingStandard);
     }
   };
 
@@ -175,7 +198,7 @@ const OnboardingView: React.FC<OnboardingViewProps> = ({ onComplete }) => {
           <TeolaLogo className="w-10 h-10 text-black dark:text-white" />
           <div className="text-center space-y-0.5">
             <h2 className="serif text-xl md:text-2xl font-bold dark:text-white">Style Profile</h2>
-            <p className="text-[7px] uppercase tracking-[0.4em] font-black text-neutral-400">Calibration Stage {step} of 3</p>
+            <p className="text-[7px] uppercase tracking-[0.4em] font-black text-neutral-400">Calibration Stage {step} of 4</p>
           </div>
         </div>
 
@@ -378,15 +401,70 @@ const OnboardingView: React.FC<OnboardingViewProps> = ({ onComplete }) => {
               </div>
             </div>
           )}
+
+          {step === 4 && (
+            <div className="space-y-4 animate-in slide-in-from-right-4 duration-500">
+              <div className="space-y-0.5">
+                <h3 className="text-base font-bold dark:text-neutral-200">Measurement Protocol</h3>
+                <p className="text-[10px] text-neutral-500 leading-relaxed italic">"Aligning biometric data with your preferred standards."</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[8px] font-black uppercase tracking-widest text-neutral-400 ml-4">Measurement System</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {['Metric', 'Imperial'].map(sys => (
+                      <button
+                        key={sys}
+                        onClick={() => setMeasurementSystem(sys as any)}
+                        className={`p-3.5 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${
+                          measurementSystem === sys 
+                            ? 'bg-black dark:bg-white text-white dark:text-black border-transparent shadow-lg' 
+                            : 'bg-neutral-50 dark:bg-neutral-900 border-neutral-100 dark:border-neutral-800 text-neutral-400'
+                        }`}
+                      >
+                        {sys}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[8px] font-black uppercase tracking-widest text-neutral-400 ml-4">Sizing Standard</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {['US', 'UK', 'EU'].map(std => (
+                      <button
+                        key={std}
+                        onClick={() => setSizingStandard(std as any)}
+                        className={`p-3.5 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${
+                          sizingStandard === std 
+                            ? 'bg-black dark:bg-white text-white dark:text-black border-transparent shadow-lg' 
+                            : 'bg-neutral-50 dark:bg-neutral-900 border-neutral-100 dark:border-neutral-800 text-neutral-400'
+                        }`}
+                      >
+                        {std}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="p-4 bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-100/50 dark:border-emerald-800/30 rounded-2xl">
+                  <p className="text-[9px] text-emerald-800 dark:text-emerald-300 leading-relaxed font-bold italic">
+                    Based on your location ({location}), I've pre-selected {measurementSystem} units and {sizingStandard} sizing. You can adjust these now or later in settings.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="pt-4 flex flex-col gap-3">
           <button
             onClick={handleNext}
-            disabled={(step === 1 && username.trim().length < 3) || (step === 2 && !gender) || (step === 3 && (!nationality || !location || !stateOrCity))}
+            disabled={(step === 1 && username.trim().length < 3) || (step === 2 && !gender) || (step === 3 && (!nationality || !location || !stateOrCity)) || (step === 4 && (!measurementSystem || !sizingStandard))}
             className="w-full py-4 bg-black dark:bg-white text-white dark:text-black rounded-xl font-black text-[10px] uppercase tracking-[0.3em] shadow-xl transition-all active:scale-95 disabled:opacity-30 flex items-center justify-center gap-3"
           >
-            {step === 3 ? 'Deploy Sequence' : 'Next Step'}
+            {step === 4 ? 'Deploy Sequence' : 'Next Step'}
             <ChevronRight size={14} />
           </button>
           
@@ -401,7 +479,7 @@ const OnboardingView: React.FC<OnboardingViewProps> = ({ onComplete }) => {
         </div>
 
         <div className="flex justify-center gap-3 pt-4">
-           {[1, 2, 3].map(i => (
+           {[1, 2, 3, 4].map(i => (
              <div key={i} className={`h-1 rounded-full transition-all duration-500 ${i <= step ? 'w-8 bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]' : 'w-2 bg-neutral-200 dark:bg-neutral-800'}`} />
            ))}
         </div>
